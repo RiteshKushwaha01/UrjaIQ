@@ -1,6 +1,8 @@
 import DashboardHeader from '@/components/dashboard/DashboardHeader'
+import EnergyTrendChart from '@/components/dashboard/EnergyTrendChart'
 import KpiCards from '@/components/dashboard/KpiCards'
 import MachineMonitoring from '@/components/dashboard/MachineMonitoring'
+import ProductionSummary from '@/components/dashboard/ProductionSummary'
 
 export default function Home() {
   return (
@@ -20,6 +22,10 @@ export default function Home() {
         <KpiCards />
 
         <MachineMonitoring />
+
+        <EnergyTrendChart />
+
+        <ProductionSummary />
       </section>
     </main>
   )

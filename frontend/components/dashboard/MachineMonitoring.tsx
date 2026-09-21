@@ -112,7 +112,7 @@ export default function MachineMonitoring() {
                   </span>
                 </div>
 
-                <div className="mt-5 grid grid-cols-3 gap-3">
+                <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
                   <div>
                     <p className="text-xs text-slate-500">Power</p>
                     <p className="mt-1 text-sm font-medium text-slate-200">
@@ -131,6 +131,13 @@ export default function MachineMonitoring() {
                     <p className="text-xs text-slate-500">Vibration</p>
                     <p className="mt-1 text-sm font-medium text-slate-200">
                       {machine.vibration.toFixed(2)}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs text-slate-500">Good Units</p>
+                    <p className="mt-1 text-sm font-medium text-slate-200">
+                      {machine.good_units}
                     </p>
                   </div>
                 </div>
