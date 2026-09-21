@@ -1,0 +1,42 @@
+# Environment
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+.next/
+out/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.pyo
+
+
+# ML
+*.pkl
+*.joblib
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Docker
+docker-data/
