@@ -38,3 +38,123 @@ export async function getLatestMachineTelemetry(
 
   return response.json()
 }
+
+export interface OptimizationBaseline {
+  batches_analyzed: number
+  average_energy_kwh: number
+  average_production_units: number
+  average_good_units: number
+  average_rejected_units: number
+  average_quality_rate: number
+  average_sec_kwh_per_good_unit: number
+}
+
+export interface MachineEnergy {
+  machine_id: string
+  machine_type: string
+  total_energy_kwh: number
+  average_power_kw: number
+  peak_power_kw: number
+  energy_share_percent: number
+}
+
+export interface MachineEnergyResponse {
+  total_factory_energy_kwh: number
+  machines: MachineEnergy[]
+}
+
+export interface OptimizationRecommendation {
+  machine_id: string
+  machine_type: string
+  priority: string
+  type: string
+  title: string
+  description: string
+  energy_kwh: number
+  energy_share_percent: number
+}
+
+export interface OptimizationRecommendationsResponse {
+  recommendations: OptimizationRecommendation[]
+  count: number
+}
+
+export interface SavingsEstimate {
+  assumptions: {
+    estimated_reduction_percent: number
+    electricity_tariff_inr_per_kwh: number
+  }
+
+  baseline: {
+    average_energy_kwh: number
+    average_good_units: number
+    sec_kwh_per_good_unit: number
+  }
+
+  optimized_scenario: {
+    estimated_energy_kwh: number
+    estimated_sec_kwh_per_good_unit: number
+    estimated_sec_improvement_percent: number
+  }
+
+  savings: {
+    estimated_energy_saving_kwh: number
+    estimated_cost_saving_inr: number
+  }
+}
+
+export async function getOptimizationBaseline(): Promise<OptimizationBaseline> {
+  const response = await fetch(`${API_BASE_URL}/api/optimization/baseline`, {
+    cache: 'no-store',
+  })
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch optimization baseline: ${response.status}`)
+  }
+
+  return response.json()
+}
+
+export async function getMachineEnergy(): Promise<MachineEnergyResponse> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/optimization/machine-energy`,
+    {
+      cache: 'no-store',
+    },
+  )
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch machine energy: ${response.status}`)
+  }
+
+  return response.json()
+}
+
+export async function getOptimizationRecommendations(): Promise<OptimizationRecommendationsResponse> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/optimization/recommendations`,
+    {
+      cache: 'no-store',
+    },
+  )
+
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch optimization recommendations: ${response.status}`,
+    )
+  }
+
+  return response.json()
+}
+
+export async function getSavingsEstimate(): Promise<SavingsEstimate> {
+  const response = await fetch(`${API_BASE_URL}/api/optimization/savings`, {
+    cache: 'no-store',
+  })
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch savings estimate: ${response.status}`)
+  }
+
+  return response.json()
+}

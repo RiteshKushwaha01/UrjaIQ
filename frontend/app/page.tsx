@@ -4,6 +4,7 @@ import KpiCards from '@/components/dashboard/KpiCards'
 import MachineMonitoring from '@/components/dashboard/MachineMonitoring'
 import ProductionSummary from '@/components/dashboard/ProductionSummary'
 import AnomalyAlerts from '@/components/dashboard/AnomalyAlerts'
+import EnergyOptimization from '@/components/dashboard/EnergyOptimization'
 
 export default function Home() {
   return (
@@ -23,8 +24,10 @@ export default function Home() {
         <KpiCards />
 
         <MachineMonitoring />
-        
+
         <AnomalyAlerts />
+
+        <EnergyOptimization />
 
         <EnergyTrendChart />
 

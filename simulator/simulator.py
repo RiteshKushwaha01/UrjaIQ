@@ -8,6 +8,12 @@ from machines import MACHINES
 from mqtt_client import create_mqtt_client
 
 
+# Current batch production state
+current_batch_id = None
+current_batch_production = 0
+current_batch_good_units = 0
+current_batch_rejected_units = 0
+
 # Small, bounded state for each machine.
 # This does NOT grow with time.
 machine_state = {
@@ -102,35 +108,65 @@ def generate_telemetry(machine, degradation=0.0):
 
     energy_kwh = power_kw * interval_hours
 
-    # Production decreases slightly as degradation increases
-    production_units = random.randint(
-        min_production,
-        max_production
-    )
+       # Production is generated once per batch.
+    # Only Furnace-01 is the production source.
+    global current_batch_id
+    global current_batch_production
+    global current_batch_good_units
+    global current_batch_rejected_units
 
-    production_units = max(
-        1,
-        int(production_units * (1 - 0.10 * degradation))
-    )
+    if machine["machine_id"] == "Furnace-01":
 
-    # Quality decreases with degradation
-    if degradation > 0.5:
-        rejected_units = random.choices(
-            [1, 2, 3],
-            weights=[50, 35, 15]
-        )[0]
+        if batch_id != current_batch_id:
+            current_batch_id = batch_id
+
+            # Generate batch production once
+            production_units = random.randint(
+                min_production,
+                max_production
+            )
+
+            # Production decreases with furnace degradation
+            production_units = max(
+                1,
+                int(production_units * (1 - 0.10 * degradation))
+            )
+
+            # Quality decreases with degradation
+            if degradation > 0.5:
+                rejected_units = random.choices(
+                    [1, 2, 3],
+                    weights=[50, 35, 15]
+                )[0]
+            else:
+                rejected_units = random.choices(
+                    [0, 1, 2],
+                    weights=[85, 12, 3]
+                )[0]
+
+            rejected_units = min(
+                rejected_units,
+                production_units
+            )
+
+            good_units = production_units - rejected_units
+
+            # Store the result for the current batch
+            current_batch_production = production_units
+            current_batch_good_units = good_units
+            current_batch_rejected_units = rejected_units
+
+        else:
+            # Reuse the same production result
+            production_units = current_batch_production
+            good_units = current_batch_good_units
+            rejected_units = current_batch_rejected_units
+
     else:
-        rejected_units = random.choices(
-            [0, 1, 2],
-            weights=[85, 12, 3]
-        )[0]
-
-    rejected_units = min(
-        rejected_units,
-        production_units
-    )
-
-    good_units = production_units - rejected_units
+        # Other machines consume energy but do not produce factory output
+        production_units = 0
+        good_units = 0
+        rejected_units = 0
 
     if degradation == 0:
         operating_state = "running"
