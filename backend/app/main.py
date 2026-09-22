@@ -10,6 +10,7 @@ from app.models.telemetry import Telemetry
 from app.mqtt.client import create_mqtt_client
 from app.api.telemetry import router as telemetry_router
 from app.api.analytics import router as analytics_router
+from app.api.ml import router as ml_router
 
 
 logging.basicConfig(
@@ -64,6 +65,7 @@ app.add_middleware(
 
 app.include_router(telemetry_router)
 app.include_router(analytics_router)
+app.include_router(ml_router)
 
 @app.get("/")
 def root():

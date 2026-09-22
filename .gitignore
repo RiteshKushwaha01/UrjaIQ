@@ -39,4 +39,4 @@ Thumbs.db
 *.log
 
 # Docker
-docker-data/
+docker-data/ml/.venv/
