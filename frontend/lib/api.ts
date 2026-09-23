@@ -158,3 +158,24 @@ export async function getSavingsEstimate(): Promise<SavingsEstimate> {
 
   return response.json()
 }
+
+export interface CarbonOverview {
+  batches_analyzed: number
+  total_energy_kwh: number
+  emission_factor_kg_co2e_per_kwh: number
+  estimated_co2e_kg: number
+  good_units: number
+  estimated_co2e_per_good_unit_kg: number
+}
+
+export async function getCarbonOverview(): Promise<CarbonOverview> {
+  const response = await fetch(`${API_BASE_URL}/api/carbon/overview`, {
+    cache: 'no-store',
+  })
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch carbon overview: ${response.status}`)
+  }
+
+  return response.json()
+}

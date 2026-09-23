@@ -5,6 +5,7 @@ import MachineMonitoring from '@/components/dashboard/MachineMonitoring'
 import ProductionSummary from '@/components/dashboard/ProductionSummary'
 import AnomalyAlerts from '@/components/dashboard/AnomalyAlerts'
 import EnergyOptimization from '@/components/dashboard/EnergyOptimization'
+import CarbonOverview from '@/components/dashboard/CarbonOverview'
 
 export default function Home() {
   return (
@@ -30,6 +31,8 @@ export default function Home() {
         <EnergyOptimization />
 
         <EnergyTrendChart />
+
+        <CarbonOverview />
 
         <ProductionSummary />
       </section>

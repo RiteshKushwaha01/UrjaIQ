@@ -12,6 +12,7 @@ from app.api.telemetry import router as telemetry_router
 from app.api.analytics import router as analytics_router
 from app.api.ml import router as ml_router
 from app.api.optimization import router as optimization_router
+from app.api.carbon import router as carbon_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -67,6 +68,7 @@ app.include_router(telemetry_router)
 app.include_router(analytics_router)
 app.include_router(ml_router)
 app.include_router(optimization_router)
+app.include_router(carbon_router)
 
 @app.get("/")
 def root():
