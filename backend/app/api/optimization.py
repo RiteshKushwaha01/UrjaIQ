@@ -4,11 +4,16 @@ from sqlalchemy.orm import Session
 
 from app.database.database import get_db
 
+
 router = APIRouter(
     prefix="/api/optimization",
     tags=["Optimization"],
 )
 
+
+# ============================================================
+# 1. BASELINE
+# ============================================================
 
 @router.get("/baseline")
 def get_energy_baseline(
@@ -70,6 +75,7 @@ def get_energy_baseline(
                 ) AS rejected_units_max
 
             FROM telemetry
+
             GROUP BY batch_id
 
             HAVING
@@ -128,8 +134,11 @@ def get_energy_baseline(
             SELECT
                 batch_id,
                 factory_energy_kwh,
+
                 production_units_min AS production_units,
+
                 good_units_min AS good_units,
+
                 rejected_units_min AS rejected_units
 
             FROM batch_metrics
@@ -144,13 +153,14 @@ def get_energy_baseline(
         calculated_metrics AS (
             SELECT
                 *,
+
                 factory_energy_kwh
                     / NULLIF(good_units, 0)
                     AS sec_kwh_per_good_unit,
 
                 good_units
+                    * 100.0
                     / NULLIF(production_units, 0)
-                    * 100
                     AS quality_rate
 
             FROM valid_batches
@@ -183,32 +193,45 @@ def get_energy_baseline(
     result = db.execute(query).mappings().one()
 
     return {
-        "batches_analyzed": result["batches_analyzed"],
+        "batches_analyzed": int(
+            result["batches_analyzed"] or 0
+        ),
+
         "average_energy_kwh": round(
             float(result["average_energy_kwh"] or 0),
             4,
         ),
+
         "average_production_units": round(
             float(result["average_production_units"] or 0),
             2,
         ),
+
         "average_good_units": round(
             float(result["average_good_units"] or 0),
             2,
         ),
+
         "average_rejected_units": round(
             float(result["average_rejected_units"] or 0),
             2,
         ),
+
         "average_quality_rate": round(
             float(result["average_quality_rate"] or 0),
             2,
         ),
+
         "average_sec_kwh_per_good_unit": round(
             float(result["average_sec"] or 0),
             4,
         ),
     }
+
+
+# ============================================================
+# 2. MACHINE ENERGY
+# ============================================================
 
 @router.get("/machine-energy")
 def get_machine_energy(
@@ -294,10 +317,18 @@ def get_machine_energy(
                         THEN rejected_units
                     END
                 )
+
+                AND MIN(
+                    CASE
+                        WHEN machine_id = 'Furnace-01'
+                        THEN good_units
+                    END
+                ) > 0
         )
 
         SELECT
             t.machine_id,
+
             t.machine_type,
 
             ROUND(
@@ -338,7 +369,9 @@ def get_machine_energy(
     machines = []
 
     for row in results:
-        energy = float(row["total_energy_kwh"] or 0)
+        energy = float(
+            row["total_energy_kwh"] or 0
+        )
 
         energy_share = (
             (energy / total_energy) * 100
@@ -348,16 +381,24 @@ def get_machine_energy(
 
         machines.append({
             "machine_id": row["machine_id"],
+
             "machine_type": row["machine_type"],
-            "total_energy_kwh": round(energy, 4),
+
+            "total_energy_kwh": round(
+                energy,
+                4,
+            ),
+
             "average_power_kw": round(
                 float(row["average_power_kw"] or 0),
                 2,
             ),
+
             "peak_power_kw": round(
                 float(row["peak_power_kw"] or 0),
                 2,
             ),
+
             "energy_share_percent": round(
                 energy_share,
                 2,
@@ -369,9 +410,14 @@ def get_machine_energy(
             total_energy,
             4,
         ),
+
         "machines": machines,
     }
 
+
+# ============================================================
+# 3. OPTIMIZATION RECOMMENDATIONS
+# ============================================================
 
 @router.get("/recommendations")
 def get_optimization_recommendations(
@@ -436,14 +482,47 @@ def get_optimization_recommendations(
                         THEN rejected_units
                     END
                 )
+
+                AND MIN(
+                    CASE
+                        WHEN machine_id = 'Furnace-01'
+                        THEN production_units
+                    END
+                )
+                =
+                MIN(
+                    CASE
+                        WHEN machine_id = 'Furnace-01'
+                        THEN good_units
+                    END
+                )
+                +
+                MIN(
+                    CASE
+                        WHEN machine_id = 'Furnace-01'
+                        THEN rejected_units
+                    END
+                )
+
+                AND MIN(
+                    CASE
+                        WHEN machine_id = 'Furnace-01'
+                        THEN good_units
+                    END
+                ) > 0
         ),
 
         machine_energy AS (
             SELECT
                 t.machine_id,
+
                 t.machine_type,
-                SUM(t.energy_kwh) AS total_energy_kwh,
-                AVG(t.power_kw) AS average_power_kw
+
+                SUM(t.energy_kwh)
+                    AS total_energy_kwh,
+
+                AVG(t.power_kw)
+                    AS average_power_kw
 
             FROM telemetry t
 
@@ -457,21 +536,28 @@ def get_optimization_recommendations(
 
         factory_energy AS (
             SELECT
-                SUM(total_energy_kwh) AS total_energy_kwh
+                SUM(total_energy_kwh)
+                    AS total_energy_kwh
+
             FROM machine_energy
         )
 
         SELECT
             me.machine_id,
+
             me.machine_type,
+
             me.total_energy_kwh,
+
             me.average_power_kw,
+
             (
                 me.total_energy_kwh
                 / NULLIF(fe.total_energy_kwh, 0)
             ) * 100 AS energy_share_percent
 
         FROM machine_energy me
+
         CROSS JOIN factory_energy fe
 
         ORDER BY
@@ -484,10 +570,13 @@ def get_optimization_recommendations(
 
     for row in results:
         machine_id = row["machine_id"]
+
         machine_type = row["machine_type"]
+
         energy_share = float(
             row["energy_share_percent"] or 0
         )
+
         energy = float(
             row["total_energy_kwh"] or 0
         )
@@ -495,22 +584,32 @@ def get_optimization_recommendations(
         if energy_share >= 30:
             recommendations.append({
                 "machine_id": machine_id,
+
                 "machine_type": machine_type,
+
                 "priority": "high",
+
                 "type": "energy_efficiency",
+
                 "title": (
                     f"Review {machine_id} energy profile"
                 ),
+
                 "description": (
                     f"{machine_id} accounts for "
                     f"{energy_share:.1f}% of factory energy "
-                    f"in the valid baseline window. "
+                    "in the valid baseline window. "
                     "Review operating and idle periods "
                     "for energy-saving opportunities "
                     "without reducing production output "
                     "or quality."
                 ),
-                "energy_kwh": round(energy, 4),
+
+                "energy_kwh": round(
+                    energy,
+                    4,
+                ),
+
                 "energy_share_percent": round(
                     energy_share,
                     2,
@@ -520,19 +619,29 @@ def get_optimization_recommendations(
         elif energy_share >= 20:
             recommendations.append({
                 "machine_id": machine_id,
+
                 "machine_type": machine_type,
+
                 "priority": "medium",
+
                 "type": "energy_efficiency",
+
                 "title": (
                     f"Monitor {machine_id} energy usage"
                 ),
+
                 "description": (
                     f"{machine_id} accounts for "
                     f"{energy_share:.1f}% of factory energy. "
                     "Review its operating profile and "
                     "identify avoidable energy consumption."
                 ),
-                "energy_kwh": round(energy, 4),
+
+                "energy_kwh": round(
+                    energy,
+                    4,
+                ),
+
                 "energy_share_percent": round(
                     energy_share,
                     2,
@@ -543,6 +652,11 @@ def get_optimization_recommendations(
         "recommendations": recommendations,
         "count": len(recommendations),
     }
+
+
+# ============================================================
+# 4. SAVINGS ESTIMATE
+# ============================================================
 
 @router.get("/savings")
 def get_savings_estimate(
@@ -607,6 +721,34 @@ def get_savings_estimate(
                         THEN rejected_units
                     END
                 )
+
+                AND MIN(
+                    CASE
+                        WHEN machine_id = 'Furnace-01'
+                        THEN production_units
+                    END
+                )
+                =
+                MIN(
+                    CASE
+                        WHEN machine_id = 'Furnace-01'
+                        THEN good_units
+                    END
+                )
+                +
+                MIN(
+                    CASE
+                        WHEN machine_id = 'Furnace-01'
+                        THEN rejected_units
+                    END
+                )
+
+                AND MIN(
+                    CASE
+                        WHEN machine_id = 'Furnace-01'
+                        THEN good_units
+                    END
+                ) > 0
         ),
 
         batch_metrics AS (
@@ -628,7 +770,8 @@ def get_savings_estimate(
             INNER JOIN valid_batches vb
                 ON t.batch_id = vb.batch_id
 
-            GROUP BY t.batch_id
+            GROUP BY
+                t.batch_id
         )
 
         SELECT
@@ -636,7 +779,12 @@ def get_savings_estimate(
                 AS average_energy_kwh,
 
             AVG(good_units)
-                AS average_good_units
+                AS average_good_units,
+
+            AVG(
+                factory_energy_kwh
+                / NULLIF(good_units, 0)
+            ) AS average_sec
 
         FROM batch_metrics;
     """)
@@ -651,8 +799,16 @@ def get_savings_estimate(
         result["average_good_units"] or 0
     )
 
+    average_sec = float(
+        result["average_sec"] or 0
+    )
+
+    # --------------------------------------------------------
     # Simulation assumptions
+    # --------------------------------------------------------
+
     assumed_reduction_percent = 8.0
+
     electricity_tariff = 8.0
 
     estimated_energy_saving = (
@@ -666,11 +822,7 @@ def get_savings_estimate(
         * electricity_tariff
     )
 
-    baseline_sec = (
-        average_energy / average_good_units
-        if average_good_units > 0
-        else 0
-    )
+    baseline_sec = average_sec
 
     optimized_energy = (
         average_energy
@@ -678,14 +830,17 @@ def get_savings_estimate(
     )
 
     optimized_sec = (
-        optimized_energy / average_good_units
-        if average_good_units > 0
-        else 0
+        baseline_sec
+        * (
+            1
+            - assumed_reduction_percent / 100
+        )
     )
 
     sec_improvement = (
         (
-            baseline_sec - optimized_sec
+            baseline_sec
+            - optimized_sec
         )
         / baseline_sec
         * 100
@@ -698,43 +853,52 @@ def get_savings_estimate(
             "estimated_reduction_percent": (
                 assumed_reduction_percent
             ),
+
             "electricity_tariff_inr_per_kwh": (
                 electricity_tariff
             ),
         },
+
         "baseline": {
             "average_energy_kwh": round(
                 average_energy,
                 4,
             ),
+
             "average_good_units": round(
                 average_good_units,
                 2,
             ),
+
             "sec_kwh_per_good_unit": round(
                 baseline_sec,
                 4,
             ),
         },
+
         "optimized_scenario": {
             "estimated_energy_kwh": round(
                 optimized_energy,
                 4,
             ),
+
             "estimated_sec_kwh_per_good_unit": round(
                 optimized_sec,
                 4,
             ),
+
             "estimated_sec_improvement_percent": round(
                 sec_improvement,
                 2,
             ),
         },
+
         "savings": {
             "estimated_energy_saving_kwh": round(
                 estimated_energy_saving,
                 4,
             ),
+
             "estimated_cost_saving_inr": round(
                 estimated_cost_saving,
                 2,

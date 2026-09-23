@@ -20,60 +20,149 @@ ELECTRICITY_EMISSION_FACTOR = 0.70
 def get_carbon_overview(
     db: Session = Depends(get_db),
 ):
-    query = text(
-        """
+    query = text("""
         WITH valid_batches AS (
             SELECT
                 batch_id,
-                MIN(timestamp) AS start_time,
-                MAX(timestamp) AS end_time,
 
-                MIN(production_units) AS production_units,
-                MAX(production_units) AS max_production_units,
+                MIN(
+                    CASE
+                        WHEN machine_id = 'Furnace-01'
+                        THEN production_units
+                    END
+                ) AS production_units,
 
-                MIN(good_units) AS good_units,
-                MAX(good_units) AS max_good_units,
+                MIN(
+                    CASE
+                        WHEN machine_id = 'Furnace-01'
+                        THEN good_units
+                    END
+                ) AS good_units,
 
-                MIN(rejected_units) AS rejected_units,
-                MAX(rejected_units) AS max_rejected_units,
-
-                SUM(energy_kwh) AS total_energy_kwh
+                MIN(
+                    CASE
+                        WHEN machine_id = 'Furnace-01'
+                        THEN rejected_units
+                    END
+                ) AS rejected_units
 
             FROM telemetry
-
-            WHERE machine_id = 'Furnace-01'
 
             GROUP BY batch_id
 
             HAVING
-                MAX(timestamp) - MIN(timestamp)
-                    >= INTERVAL '240 seconds'
+                COUNT(DISTINCT machine_id) = 4
 
-                AND MIN(production_units)
-                    = MAX(production_units)
+                AND EXTRACT(
+                    EPOCH FROM (
+                        MAX(timestamp) - MIN(timestamp)
+                    )
+                ) >= 240
 
-                AND MIN(good_units)
-                    = MAX(good_units)
+                AND MIN(
+                    CASE
+                        WHEN machine_id = 'Furnace-01'
+                        THEN production_units
+                    END
+                )
+                =
+                MAX(
+                    CASE
+                        WHEN machine_id = 'Furnace-01'
+                        THEN production_units
+                    END
+                )
 
-                AND MIN(rejected_units)
-                    = MAX(rejected_units)
+                AND MIN(
+                    CASE
+                        WHEN machine_id = 'Furnace-01'
+                        THEN good_units
+                    END
+                )
+                =
+                MAX(
+                    CASE
+                        WHEN machine_id = 'Furnace-01'
+                        THEN good_units
+                    END
+                )
 
-                AND MIN(production_units)
-                    = MIN(good_units) + MIN(rejected_units)
+                AND MIN(
+                    CASE
+                        WHEN machine_id = 'Furnace-01'
+                        THEN rejected_units
+                    END
+                )
+                =
+                MAX(
+                    CASE
+                        WHEN machine_id = 'Furnace-01'
+                        THEN rejected_units
+                    END
+                )
 
-                AND MIN(good_units) > 0
+                AND MIN(
+                    CASE
+                        WHEN machine_id = 'Furnace-01'
+                        THEN production_units
+                    END
+                )
+                =
+                MIN(
+                    CASE
+                        WHEN machine_id = 'Furnace-01'
+                        THEN good_units
+                    END
+                )
+                +
+                MIN(
+                    CASE
+                        WHEN machine_id = 'Furnace-01'
+                        THEN rejected_units
+                    END
+                )
+
+                AND MIN(
+                    CASE
+                        WHEN machine_id = 'Furnace-01'
+                        THEN good_units
+                    END
+                ) > 0
+        ),
+
+        batch_energy AS (
+            SELECT
+                t.batch_id,
+
+                SUM(t.energy_kwh)
+                    AS factory_energy_kwh
+
+            FROM telemetry t
+
+            INNER JOIN valid_batches vb
+                ON t.batch_id = vb.batch_id
+
+            GROUP BY t.batch_id
         )
 
         SELECT
             COUNT(*) AS batches_analyzed,
-            COALESCE(SUM(total_energy_kwh), 0)
-                AS total_energy_kwh,
-            COALESCE(SUM(good_units), 0)
-                AS total_good_units
 
-        FROM valid_batches
-        """
-    )
+            COALESCE(
+                SUM(be.factory_energy_kwh),
+                0
+            ) AS total_energy_kwh,
+
+            COALESCE(
+                SUM(vb.good_units),
+                0
+            ) AS total_good_units
+
+        FROM valid_batches vb
+
+        INNER JOIN batch_energy be
+            ON vb.batch_id = be.batch_id;
+    """)
 
     result = db.execute(query).mappings().one()
 
@@ -90,7 +179,8 @@ def get_carbon_overview(
     )
 
     estimated_co2e = (
-        total_energy * ELECTRICITY_EMISSION_FACTOR
+        total_energy
+        * ELECTRICITY_EMISSION_FACTOR
     )
 
     co2e_per_good_unit = (
