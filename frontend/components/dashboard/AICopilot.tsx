@@ -40,7 +40,10 @@ export default function AICopilot() {
     setLoading(true)
 
     try {
-      const response = await fetch('http://localhost:8000/api/ai/chat', {
+      const API_BASE_URL =
+        process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+
+      const response = await fetch(`${API_BASE_URL}/api/ai/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
