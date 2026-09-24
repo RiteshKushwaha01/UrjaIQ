@@ -21,10 +21,13 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
 def get_factory_context(db: Session) -> dict:
     """
     Build a grounded snapshot of the current UrjaIQ factory state.
+
+    Energy, production, quality, SEC, machine-energy distribution,
+    and carbon calculations use the same validated batch window.
     """
 
     # ---------------------------------------------------------
-    # FACTORY ANALYTICS
+    # VALID BATCHES + FACTORY ANALYTICS
     # ---------------------------------------------------------
 
     analytics_query = text("""
@@ -33,8 +36,7 @@ def get_factory_context(db: Session) -> dict:
                 batch_id,
                 MIN(production_units) AS production_units,
                 MIN(good_units) AS good_units,
-                MIN(rejected_units) AS rejected_units,
-                SUM(energy_kwh) AS total_energy_kwh
+                MIN(rejected_units) AS rejected_units
             FROM telemetry
             WHERE machine_id = 'Furnace-01'
             GROUP BY batch_id
@@ -46,6 +48,22 @@ def get_factory_context(db: Session) -> dict:
                 AND MIN(production_units) =
                     MIN(good_units) + MIN(rejected_units)
                 AND MIN(good_units) > 0
+        ),
+        batch_energy AS (
+            SELECT
+                vb.batch_id,
+                vb.production_units,
+                vb.good_units,
+                vb.rejected_units,
+                COALESCE(SUM(t.energy_kwh), 0) AS total_energy_kwh
+            FROM valid_batches vb
+            JOIN telemetry t
+                ON t.batch_id = vb.batch_id
+            GROUP BY
+                vb.batch_id,
+                vb.production_units,
+                vb.good_units,
+                vb.rejected_units
         )
         SELECT
             COUNT(*) AS batches_analyzed,
@@ -53,7 +71,7 @@ def get_factory_context(db: Session) -> dict:
             COALESCE(SUM(production_units), 0) AS production_units,
             COALESCE(SUM(good_units), 0) AS good_units,
             COALESCE(SUM(rejected_units), 0) AS rejected_units
-        FROM valid_batches
+        FROM batch_energy
     """)
 
     result = db.execute(analytics_query).mappings().one()
@@ -126,24 +144,45 @@ def get_factory_context(db: Session) -> dict:
 
     # ---------------------------------------------------------
     # MACHINE ENERGY DISTRIBUTION
+    # Uses the same valid batches as factory analytics.
     # ---------------------------------------------------------
 
     machine_energy_query = text("""
+        WITH valid_batches AS (
+            SELECT
+                batch_id
+            FROM telemetry
+            WHERE machine_id = 'Furnace-01'
+            GROUP BY batch_id
+            HAVING
+                MAX(timestamp) - MIN(timestamp) >= INTERVAL '240 seconds'
+                AND MIN(production_units) = MAX(production_units)
+                AND MIN(good_units) = MAX(good_units)
+                AND MIN(rejected_units) = MAX(rejected_units)
+                AND MIN(production_units) =
+                    MIN(good_units) + MIN(rejected_units)
+                AND MIN(good_units) > 0
+        )
         SELECT
-            machine_id,
-            machine_type,
-            ROUND(SUM(energy_kwh)::numeric, 4) AS total_energy_kwh,
-            ROUND(AVG(power_kw)::numeric, 2) AS average_power_kw,
-            ROUND(MAX(power_kw)::numeric, 2) AS peak_power_kw
-        FROM telemetry
-        GROUP BY machine_id, machine_type
-        ORDER BY SUM(energy_kwh) DESC
+            t.machine_id,
+            t.machine_type,
+            ROUND(SUM(t.energy_kwh)::numeric, 4) AS total_energy_kwh,
+            ROUND(AVG(t.power_kw)::numeric, 2) AS average_power_kw,
+            ROUND(MAX(t.power_kw)::numeric, 2) AS peak_power_kw
+        FROM telemetry t
+        JOIN valid_batches vb
+            ON t.batch_id = vb.batch_id
+        GROUP BY
+            t.machine_id,
+            t.machine_type
+        ORDER BY SUM(t.energy_kwh) DESC
     """)
 
     machine_energy_rows = db.execute(
         machine_energy_query
     ).mappings().all()
 
+    # This now matches the validated factory analytics energy.
     factory_energy = sum(
         float(row["total_energy_kwh"])
         for row in machine_energy_rows
@@ -239,6 +278,7 @@ def get_factory_context(db: Session) -> dict:
 
     # ---------------------------------------------------------
     # CARBON
+    # Uses the same validated factory energy.
     # ---------------------------------------------------------
 
     emission_factor = 0.70
@@ -296,6 +336,7 @@ def get_factory_context(db: Session) -> dict:
             ),
         },
     }
+
 
 def generate_ai_response(
     db: Session,
@@ -360,7 +401,7 @@ Now answer the USER QUESTION.
                 ]
             }
         ],
-       "generationConfig": {
+        "generationConfig": {
             "thinkingConfig": {
                 "thinkingLevel": "low"
             },
@@ -378,7 +419,13 @@ Now answer the USER QUESTION.
             timeout=90,
         )
 
-        if response.status_code not in {429, 500, 502, 503, 504}:
+        if response.status_code not in {
+            429,
+            500,
+            502,
+            503,
+            504,
+        }:
             break
 
         if attempt < max_attempts - 1:
