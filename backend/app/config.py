@@ -15,6 +15,8 @@ class Settings(BaseSettings):
 
     MQTT_HOST: str
     MQTT_PORT: int
+    MQTT_USERNAME: str
+    MQTT_PASSWORD: str
 
     model_config = SettingsConfigDict(
         env_file=BASE_DIR / ".env",
