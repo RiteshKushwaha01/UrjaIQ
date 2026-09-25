@@ -1,6 +1,10 @@
 import json
 import random
 import time
+
+import os
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from datetime import datetime, timezone
 
 from config import MQTT_TOPIC, PUBLISH_INTERVAL
@@ -193,8 +197,49 @@ def generate_telemetry(machine, degradation=0.0):
     }
 
 
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == "/health":
+            response = json.dumps({
+                "status": "running",
+                "service": "UrjaIQ Simulator"
+            }).encode()
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(response)))
+            self.end_headers()
+            self.wfile.write(response)
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def log_message(self, format, *args):
+        return
+
+
+def start_health_server():
+    port = int(os.getenv("PORT", "10000"))
+
+    server = ThreadingHTTPServer(
+        ("0.0.0.0", port),
+        HealthHandler
+    )
+
+    print(f"Health server running on port {port}")
+    server.serve_forever()
+
+
 def main():
+    health_thread = threading.Thread(
+        target=start_health_server,
+        daemon=True
+    )
+    health_thread.start()
+
     client = create_mqtt_client()
+
+    client.loop_start()
 
     print("UrjaIQ Factory Simulator started")
     print(f"Publishing to: {MQTT_TOPIC}")
@@ -230,6 +275,7 @@ def main():
         print("\nSimulator stopped.")
 
     finally:
+        client.loop_start()
         client.disconnect()
 
 
